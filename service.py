@@ -1,24 +1,24 @@
 from flask import Flask, request, jsonify
 from openai import OpenAI
 import requests
-# from apify import ApifyClient
 from bs4 import BeautifulSoup
 import asyncio
 from flask_cors import CORS, cross_origin
+import numpy as np
+from dotenv import load_dotenv
+import os
+
+load_dotenv()  # Load environment variables from .env file
+openai_key = os.getenv("OPEN_AI_KEY")
+stocknews_key = os.getenv("STOCKNEWS_KEY")
+alphaventage_key = os.getenv("ALPHAVENTAGE_KEY")
 
 app = Flask(__name__)
 cors = CORS(app)
 app.config['CORS_HEADERS'] = 'Content-Type'
 
-# secondary: 'us3v1bxkbkf6ku2qbrcfjjpduvagqbbzq0dztbvz'
-stocknews_key = '5wmkngcka0xiid46soub8m6sh9is6yteyyrvbmfr'
-openai_key = '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'
-# apify_key = 'apify_api_c5IHsCChv5KxjnoDWnRMelSA11CyXO3EoY3P'
-alphaventage_key = 'RZ30F8SG7T4D00OS'
-
 
 openai_client = OpenAI(api_key=openai_key)
-# apify_client = ApifyClient(apify_key)
 
 
 def get_ticker_symbol(company_name):
@@ -47,15 +47,39 @@ def get_sentiment(ticker: str):
         A bullish outlook indicates a belief that prices are likely to rise or that the market is in an uptrend.
         Bullish investors anticipate an increase in the value of assets and may take actions such as buying stocks or holding onto securities with the expectation of future gains.
 
-    -1 represents extremely bearish sentiment,
-    0 represents neutral sentiment, and
-    1 represents extremely bullish sentiment.
+    x <= -0.35: Bearish; -0.35 < x <= -0.15: Somewhat-Bearish; -0.15 < x < 0.15: Neutral; 0.15 <= x < 0.35: Somewhat_Bullish; x >= 0.35: Bullish
     '''
-    url = f'https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers={ticker}&apikey={alphaventage_key}'
+    def softmax(x):
+        return (np.exp(x)/np.exp(x).sum())
+    url = f'https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers={ticker}&limit=20&apikey={alphaventage_key}'
     try:
+        relevances = []
+        sentiment_scores = []
         response = requests.get(url)
         data = response.json()
-        return data['sentiment_score_definition']
+        for entry in data['feed']:
+            for sentiment in entry['ticker_sentiment']:
+                if sentiment['ticker'] != ticker:
+                    continue
+                relevances.append(float(sentiment['relevance_score']))
+                sentiment_scores.append(
+                    float(sentiment['ticker_sentiment_score']))
+        relevances = np.array(relevances)
+        sentiment_scores = np.array(sentiment_scores)
+        relevances = softmax(relevances)
+        final_score = round(np.dot(relevances, sentiment_scores), 4)
+        if final_score <= -0.35:
+            label = 'Bearish'
+        elif final_score <= -0.15:
+            label = 'Somewhat-Bearish'
+        elif final_score < 0.15:
+            label = 'Neutral'
+        elif final_score < 0.35:
+            label = 'Somewhat-Bullish'
+        else:
+            label = 'Bullish'
+        return {'score': final_score, 'label': label}
+
     except Exception as e:
         print(e)
         return None
