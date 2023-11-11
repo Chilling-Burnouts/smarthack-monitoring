@@ -4,7 +4,6 @@ import requests
 # from apify import ApifyClient
 from bs4 import BeautifulSoup
 import asyncio
-from urllib.request import urlopen
 
 app = Flask(__name__)
 
@@ -262,6 +261,23 @@ def get_news_summarized_route():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
+@app.route('/timeseries/daily', methods=['GET'])
+def get_daily_time_series():
+    # This endpoint returns the news as received from the API, summarized by GPT-4
+    try:
+        ticker = request.args.get('ticker')
+
+        if ticker:
+            url = f'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=AMZN&apikey={alphaventage_key}'
+            response = requests.get(url)
+            stock_data = response.json()["Time Series (Daily)"]
+            return jsonify({'timeseries': stock_data})
+        else:
+            return jsonify({'error': 'Ticker not provided'}), 400
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
