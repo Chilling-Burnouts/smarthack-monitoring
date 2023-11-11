@@ -4,11 +4,15 @@ import requests
 # from apify import ApifyClient
 from bs4 import BeautifulSoup
 import asyncio
+from flask_cors import CORS, cross_origin
 
 app = Flask(__name__)
+cors = CORS(app)
+app.config['CORS_HEADERS'] = 'Content-Type'
 
-stocknews_key = '5wmkngcka0xiid46soub8m6sh9is6yteyyrvbmfr' # secondary: 'us3v1bxkbkf6ku2qbrcfjjpduvagqbbzq0dztbvz'
-openai_key = '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'
+# secondary: 'us3v1bxkbkf6ku2qbrcfjjpduvagqbbzq0dztbvz'
+stocknews_key = '5wmkngcka0xiid46soub8m6sh9is6yteyyrvbmfr'
+openai_key = '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'
 # apify_key = 'apify_api_c5IHsCChv5KxjnoDWnRMelSA11CyXO3EoY3P'
 alphaventage_key = 'RZ30F8SG7T4D00OS'
 
@@ -33,7 +37,8 @@ def get_ticker_symbol(company_name):
 
     return None
 
-def get_sentiment(ticker:str):
+
+def get_sentiment(ticker: str):
     '''
     Bearish:
         A bearish outlook indicates a belief that prices are likely to fall or that the market is in a downtrend.
@@ -55,13 +60,14 @@ def get_sentiment(ticker:str):
         print(e)
         return None
 
+
 def extract_text_from_html(html_content):
     # Parse the HTML content
     soup = BeautifulSoup(html_content, 'html.parser')
 
     # Remove script and style elements
     for noise in soup(['script', 'style', 'header', 'footer', 'nav', '[role="navigation"]', '.popup', '#popup']):
-            noise.decompose()
+        noise.decompose()
 
     # Get text
     text = soup.get_text()
@@ -77,9 +83,11 @@ def extract_text_from_html(html_content):
 
     return text
 
+
 def get_html_from_article(url: str) -> str:
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         return response.text
@@ -87,11 +95,13 @@ def get_html_from_article(url: str) -> str:
         print(f"Error fetching HTML content: {e}")
         return None
 
+
 def get_text_content(url: str) -> str:
     html = get_html_from_article(url)
     if not html:
         return None
     return extract_text_from_html(html)
+
 
 class Article:
     def __init__(self, url, title, short_content):
@@ -103,7 +113,7 @@ class Article:
 
     async def summarize_long_content(self):
         response = openai_client.chat.completions.create(
-        messages=[
+            messages=[
                 {
                     "role": "user",
                     "content": f"I have extracted text content from a news article. The news article title is {self.title}. The content is noisy due to parsing. Please summarize the article given this text data I have extracted:\n{self.long_content}\n\nSummary:",
@@ -112,7 +122,7 @@ class Article:
             model="gpt-4",
             temperature=0,
             max_tokens=1024,
-            n = 1,
+            n=1,
         )
         summary = response.choices[0].message.content
         if summary and len(summary) > 0:
@@ -120,8 +130,9 @@ class Article:
 
     def __str__(self):
         return f"Title: {self.title}\nURL: {self.url}\nShort Content: {self.short_content}\nLong Content: {self.long_content}"
-    
-def get_news_from_stocknews(ticker:str, items:int=3):
+
+
+def get_news_from_stocknews(ticker: str, items: int = 3):
     news = []
     news_count = 0
     page = 1
@@ -132,7 +143,8 @@ def get_news_from_stocknews(ticker:str, items:int=3):
         page += 1
     return news
 
-def get_news_page_from_stocknews(ticker:str, items:int=3, page:int=1) -> list[Article]:
+
+def get_news_page_from_stocknews(ticker: str, items: int = 3, page: int = 1) -> list[Article]:
     # for now, only one ticker, parallelization up to platform
     # https://stocknewsapi.com/api/v1?tickers=AMZN&items=50&page=1&token=GET_API_KEY
 
@@ -154,7 +166,8 @@ def get_news_page_from_stocknews(ticker:str, items:int=3, page:int=1) -> list[Ar
             # if url contains youtube continue // TODO: add more filtering conditions, the data is messy
             if "youtube" in entry["news_url"]:
                 continue
-            article = Article(url=entry["news_url"], title=entry["title"], short_content=entry["text"])
+            article = Article(
+                url=entry["news_url"], title=entry["title"], short_content=entry["text"])
             if not article.long_content:
                 continue
             articles.append(article)
@@ -162,9 +175,11 @@ def get_news_page_from_stocknews(ticker:str, items:int=3, page:int=1) -> list[Ar
     else:
         raise Exception(f"Error: {response.status_code} - {response.text}")
 
+
 async def summarize_news(articles):
     tasks = [article.summarize_long_content() for article in articles]
     await asyncio.gather(*tasks)
+
 
 def fetch_and_summarize_news(ticker, items=3):
     news = get_news_from_stocknews(ticker, items)
@@ -175,6 +190,7 @@ def fetch_and_summarize_news(ticker, items=3):
 # SERVICE
 
 @app.route('/sentiment', methods=['GET'])
+@cross_origin()
 def get_sentiment_route():
     try:
         ticker = request.args.get('ticker')
@@ -190,6 +206,7 @@ def get_sentiment_route():
 
 
 @app.route('/ticker', methods=['GET'])
+@cross_origin()
 def get_ticker_route():
     try:
         company_name = request.args.get('company_name')
@@ -207,6 +224,7 @@ def get_ticker_route():
 
 
 @app.route('/news', methods=['GET'])
+@cross_origin()
 def get_news_route():
     # This endpoint returns the news as received from the API
     try:
@@ -218,7 +236,7 @@ def get_news_route():
                 news_articles = get_news_from_stocknews(ticker)
             else:
                 news_articles = get_news_from_stocknews(ticker, int(count))
-            
+
             response = []
             for item in news_articles:
                 response.append({
@@ -234,7 +252,11 @@ def get_news_route():
         return jsonify({'error': str(e)}), 500
 
 
+summarize_dict = {}
+
+
 @app.route('/news/summarized', methods=['GET'])
+@cross_origin()
 def get_news_summarized_route():
     # This endpoint returns the news as received from the API, summarized by GPT-4
     try:
@@ -242,6 +264,9 @@ def get_news_summarized_route():
         count = request.args.get('count')
 
         if ticker:
+            if summarize_dict.get(ticker) is not None:
+                return jsonify({'news': summarize_dict[ticker]})
+
             if count is None:
                 news_articles = fetch_and_summarize_news(ticker)
             else:
@@ -254,6 +279,9 @@ def get_news_summarized_route():
                     "title": item.title,
                     "summary": item.long_content_summary,
                 })
+
+            summarize_dict[ticker] = response
+
             return jsonify({'news': response})
         else:
             return jsonify({'error': 'Ticker not provided'}), 400
@@ -263,6 +291,7 @@ def get_news_summarized_route():
 
 
 @app.route('/timeseries/daily', methods=['GET'])
+@cross_origin()
 def get_daily_time_series():
     # This endpoint returns the news as received from the API, summarized by GPT-4
     try:
@@ -278,6 +307,7 @@ def get_daily_time_series():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True)
