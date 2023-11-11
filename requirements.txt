@@ -6,3 +6,4 @@ beautifulsoup4==4.12.2
 alpha-vantage==2.3.1
 pandas
 asyncio
+python-dotenv
