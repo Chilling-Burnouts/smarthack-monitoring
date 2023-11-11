@@ -60,7 +60,18 @@ def get_sentiment(ticker:str):
         relevances = np.array(relevances)
         sentiment_scores = np.array(sentiment_scores)
         relevances = softmax(relevances)
-        return round(np.dot(relevances, sentiment_scores), 4)
+        final_score = round(np.dot(relevances, sentiment_scores), 4)
+        if final_score <= -0.35:
+            label = 'Bearish'
+        elif final_score <= -0.15:
+            label = 'Somewhat-Bearish'
+        elif final_score < 0.15:
+            label = 'Neutral'
+        elif final_score < 0.35:
+            label = 'Somewhat-Bullish'
+        else:
+            label = 'Bullish'
+        return {'score': final_score, 'label': label}
 
     except Exception as e:
         print(e)
