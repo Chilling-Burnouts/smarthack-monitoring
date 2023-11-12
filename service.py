@@ -1,5 +1,6 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response, stream_with_context
 from openai import OpenAI
+import json
 import requests
 from bs4 import BeautifulSoup
 import asyncio
@@ -7,16 +8,20 @@ from flask_cors import CORS, cross_origin
 import numpy as np
 from dotenv import load_dotenv
 import os
+from flask_socketio import SocketIO, emit
 
 load_dotenv()  # Load environment variables from .env file
 openai_key = os.getenv("OPEN_AI_KEY")
 stocknews_key = os.getenv("STOCKNEWS_KEY")
 alphaventage_key = os.getenv("ALPHAVENTAGE_KEY")
 
-app = Flask(__name__)
-cors = CORS(app)
-app.config['CORS_HEADERS'] = 'Content-Type'
 
+app = Flask(__name__)
+
+cors = CORS(app)
+# app.config['CORS_HEADERS'] = 'Content-Type'
+
+socketio = SocketIO(app, cors_allowed_origins='*')
 
 openai_client = OpenAI(api_key=openai_key)
 
@@ -159,7 +164,7 @@ class Article:
 def get_news_from_stocknews(ticker: str, items: int = 3):
     news = []
     news_count = 0
-    page = 1
+    page = 2
     while news_count < items:
         news_batch = get_news_page_from_stocknews(ticker, page=page)
         news.extend(news_batch)
@@ -333,37 +338,44 @@ def get_daily_time_series():
         return jsonify({'error': str(e)}), 500
 
 
-messages_cache = []
-
-
 @app.route('/ask', methods=['POST'])
 def ask_route():
     try:
         data = request.get_json()
         if data is None or 'question' not in data:
             return jsonify({'error': 'Question not provided'}), 400
-        context = ''.join(messages_cache)
-        content = f"Here is our previous conversation: {context}. {data['question']}"
+
         response = openai_client.chat.completions.create(
             messages=[
                 {
                     "role": "user",
-                    "content": content,
+                    "content": data['question'],
                 }
             ],
             model="gpt-4",
             temperature=0.5,
             max_tokens=1024,
             n=1,
+            stream=True
         )
-        answer = response.choices[0].message.content
-        messages_cache.append(data['question'])
-        messages_cache.append(answer)
-        # print(messages_cache)
-        return jsonify({'answer': answer})
+
+        def generate():
+            for chunk in response:
+                print(chunk)
+
+                socketio.emit('message', {
+                    'message': chunk.choices[0].delta.content,
+                })
+
+        generate()
+
+        return '', 200  # Return an empty response for the HTTP request
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    print('yes')
+    # app.run(debug=True)
+    socketio.run(app, host='127.0.0.1', port=5000)
