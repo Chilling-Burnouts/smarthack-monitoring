@@ -324,9 +324,9 @@ def ask_route():
             n = 1,
         )
         answer = response.choices[0].message.content
-        messages_cache.append(content)
+        messages_cache.append(data['question'])
         messages_cache.append(answer)
-        print(messages_cache)
+        # print(messages_cache)
         return jsonify({'answer': answer})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
