@@ -301,5 +301,36 @@ def get_daily_time_series():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
+messages_cache = []
+@app.route('/ask', methods=['POST'])
+def ask_route():
+    try:
+        data = request.get_json()
+        if data is None or 'question' not in data:
+            return jsonify({'error': 'Question not provided'}), 400
+        context = ''.join(messages_cache)
+        content = f"Here is our previous conversation: {context}. {data['question']}"
+        response = openai_client.chat.completions.create(
+        messages=[
+                {
+                    "role": "user",
+                    "content": content,
+                }
+            ],
+            model="gpt-4",
+            temperature=0.5,
+            max_tokens=1024,
+            n = 1,
+        )
+        answer = response.choices[0].message.content
+        messages_cache.append(content)
+        messages_cache.append(answer)
+        print(messages_cache)
+        return jsonify({'answer': answer})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     app.run(debug=True)
